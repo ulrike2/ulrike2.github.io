@@ -2,137 +2,175 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Pizza-Ofen Regelungssimulation</title>
+<title>Pizza Regelungssimulation</title>
+
 <style>
-    body {
-        font-family: Arial;
-        text-align: center;
-        background: #f5f5f5;
-    }
-    canvas {
-        background: white;
-        border: 1px solid #ccc;
-        margin-top: 10px;
-    }
-    button {
-        padding: 10px 20px;
-        font-size: 16px;
-        margin: 10px;
-        cursor: pointer;
-    }
-    #status {
-        font-size: 18px;
-        margin-top: 10px;
-    }
+body {
+    font-family: Arial;
+    text-align: center;
+    background: #f5f5f5;
+}
+
+.row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.box {
+    border: 2px solid black;
+    padding: 15px;
+    background: white;
+    min-width: 120px;
+}
+
+.arrow {
+    font-size: 30px;
+}
+
+canvas {
+    background: white;
+    border: 1px solid #ccc;
+    margin-top: 20px;
+}
+
+#score {
+    font-size: 28px;
+    font-weight: bold;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin-top: 10px;
+}
 </style>
 </head>
 
 <body>
 
-<h2>🍕 Pizza-Ofen Regelungssimulation</h2>
+<h2>🍕 Pizza-Regelungssimulation</h2>
 
-<button onclick="toggleOven()" id="btn">Ofen AN</button>
+<!-- BLOCKDIAGRAMM -->
+<div class="row">
+    <div class="box">
+        🔥<br>
+        Heizelement<br><br>
+        <button onclick="toggle()">Ofen AN/AUS</button>
+    </div>
 
-<div id="status">Status: Warten...</div>
+    <div class="arrow">→</div>
 
-<canvas id="chart" width="800" height="400"></canvas>
+    <div class="box">
+        Backofen<br><br>
+        <div id="tempBox">160 °C</div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="box">
+        Temperatur<br><br>
+        <div id="score">SCORE 000</div>
+    </div>
+</div>
+
+<!-- CHART -->
+<canvas id="chart" width="800" height="350"></canvas>
 
 <script>
-let ovenOn = false;
+let oven = false;
 
-let temp = 20;           // Istwert
-const target = 200;      // Sollwert
+let temp = 20;
+const target = 200;
 const ambient = 20;
 
-let historyTemp = [];
-let historyTarget = [];
+let dataTemp = [];
+let dataTarget = [];
 
-const canvas = document.getElementById("chart");
-const ctx = canvas.getContext("2d");
-
-function toggleOven() {
-    ovenOn = !ovenOn;
-    document.getElementById("btn").innerText = ovenOn ? "Ofen AUS" : "Ofen AN";
+function toggle(){
+    oven = !oven;
 }
 
-function updatePhysics() {
-    const power = ovenOn ? 7.5 : 0.0;   // bewusst stärker dimensioniert
-    const loss = 0.02 * (temp - ambient); // relativ schwacher Verlust
+function score(temp){
+    let err = Math.abs(target - temp);
+
+    if(err < 10) return 100;
+    if(err < 30) return 70;
+    if(err < 60) return 40;
+    return 10;
+}
+
+function update(){
+    // 🔥 Regelstrecke so eingestellt, dass Gleichgewicht > Sollwert
+    let power = oven ? 8.0 : 0.0;
+    let loss = 0.02 * (temp - ambient);
 
     temp += power - loss;
 
-    if (temp < ambient) temp = ambient;
-    if (temp > 300) temp = 300;
+    if(temp < ambient) temp = ambient;
+    if(temp > 320) temp = 320;
 
-    historyTemp.push(temp);
-    historyTarget.push(target);
+    dataTemp.push(temp);
+    dataTarget.push(target);
 
-    if (historyTemp.length > 200) {
-        historyTemp.shift();
-        historyTarget.shift();
+    if(dataTemp.length > 200){
+        dataTemp.shift();
+        dataTarget.shift();
     }
+
+    document.getElementById("tempBox").innerText = temp.toFixed(1) + " °C";
+    document.getElementById("score").innerText = "SCORE " + score(temp);
 }
 
-function getStatus() {
-    if (temp > 220) return "🔥 Pizza verbrannt!";
-    if (temp < 190 && ovenOn) return "❄️ Zu kalt!";
-    if (!ovenOn && temp < 50) return "Ofen aus – kühlt ab";
-    return "🍕 Backt...";
-}
+function draw(){
+    const c = document.getElementById("chart");
+    const ctx = c.getContext("2d");
 
-function drawChart() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0,0,c.width,c.height);
 
     // Achsen
     ctx.beginPath();
-    ctx.moveTo(50, 350);
-    ctx.lineTo(750, 350);
-    ctx.moveTo(50, 350);
-    ctx.lineTo(50, 50);
+    ctx.moveTo(50,300);
+    ctx.lineTo(750,300);
+    ctx.moveTo(50,300);
+    ctx.lineTo(50,20);
     ctx.stroke();
 
-    // Skalierung
-    const scaleX = 3;
-    const scaleY = 1.2;
+    let sx = 3;
+    let sy = 1.2;
 
     // Sollwert (rot)
     ctx.beginPath();
     ctx.strokeStyle = "red";
-    for (let i = 0; i < historyTarget.length; i++) {
-        let x = 50 + i * scaleX;
-        let y = 350 - historyTarget[i] * scaleY;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    for(let i=0;i<dataTarget.length;i++){
+        let x = 50 + i*sx;
+        let y = 300 - dataTarget[i]*sy;
+        if(i===0) ctx.moveTo(x,y);
+        else ctx.lineTo(x,y);
     }
     ctx.stroke();
 
     // Istwert (blau)
     ctx.beginPath();
     ctx.strokeStyle = "blue";
-    for (let i = 0; i < historyTemp.length; i++) {
-        let x = 50 + i * scaleX;
-        let y = 350 - historyTemp[i] * scaleY;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    for(let i=0;i<dataTemp.length;i++){
+        let x = 50 + i*sx;
+        let y = 300 - dataTemp[i]*sy;
+        if(i===0) ctx.moveTo(x,y);
+        else ctx.lineTo(x,y);
     }
     ctx.stroke();
 
-    // Labels
-    ctx.fillStyle = "black";
-    ctx.fillText("Zeit →", 700, 380);
-    ctx.fillText("Temperatur", 10, 60);
-
-    ctx.fillStyle = "red";
-    ctx.fillText("Sollwert (200°C)", 600, 80);
-
-    ctx.fillStyle = "blue";
-    ctx.fillText("Istwert", 600, 100);
+    ctx.fillStyle="black";
+    ctx.fillText("Zeit →",700,330);
+    ctx.fillText("Temperatur",10,30);
 }
 
-function loop() {
-    updatePhysics();
-    drawChart();
-    document.getElementById("status").innerText = "Status: " + getStatus();
+function loop(){
+    update();
+    draw();
     requestAnimationFrame(loop);
 }
 
