@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Pizza-Ofen Regelungssimulation</title>
+<style>
+    body {
+        font-family: Arial;
+        text-align: center;
+        background: #f5f5f5;
+    }
+    canvas {
+        background: white;
+        border: 1px solid #ccc;
+        margin-top: 10px;
+    }
+    button {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin: 10px;
+        cursor: pointer;
+    }
+    #status {
+        font-size: 18px;
+        margin-top: 10px;
+    }
+</style>
+</head>
+
+<body>
+
+<h2>🍕 Pizza-Ofen Regelungssimulation</h2>
+
+<button onclick="toggleOven()" id="btn">Ofen AN</button>
+
+<div id="status">Status: Warten...</div>
+
+<canvas id="chart" width="800" height="400"></canvas>
+
+<script>
+let ovenOn = false;
+
+let temp = 20;           // Istwert
+const target = 200;      // Sollwert
+const ambient = 20;
+
+let historyTemp = [];
+let historyTarget = [];
+
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+
+function toggleOven() {
+    ovenOn = !ovenOn;
+    document.getElementById("btn").innerText = ovenOn ? "Ofen AUS" : "Ofen AN";
+}
+
+function updatePhysics() {
+    // einfache thermische Dynamik
+    let heating = ovenOn ? 2.5 : -1.5;
+
+    // Abkühlung zur Umgebung
+    let cooling = (ambient - temp) * 0.02;
+
+    temp += heating + cooling;
+
+    // Grenzen
+    if (temp < ambient) temp = ambient;
+    if (temp > 300) temp = 300;
+
+    historyTemp.push(temp);
+    historyTarget.push(target);
+
+    if (historyTemp.length > 200) {
+        historyTemp.shift();
+        historyTarget.shift();
+    }
+}
+
+function getStatus() {
+    if (temp > 220) return "🔥 Pizza verbrannt!";
+    if (temp < 190 && ovenOn) return "❄️ Zu kalt!";
+    if (!ovenOn && temp < 50) return "Ofen aus – kühlt ab";
+    return "🍕 Backt...";
+}
+
+function drawChart() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Achsen
+    ctx.beginPath();
+    ctx.moveTo(50, 350);
+    ctx.lineTo(750, 350);
+    ctx.moveTo(50, 350);
+    ctx.lineTo(50, 50);
+    ctx.stroke();
+
+    // Skalierung
+    const scaleX = 3;
+    const scaleY = 1.2;
+
+    // Sollwert (rot)
+    ctx.beginPath();
+    ctx.strokeStyle = "red";
+    for (let i = 0; i < historyTarget.length; i++) {
+        let x = 50 + i * scaleX;
+        let y = 350 - historyTarget[i] * scaleY;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Istwert (blau)
+    ctx.beginPath();
+    ctx.strokeStyle = "blue";
+    for (let i = 0; i < historyTemp.length; i++) {
+        let x = 50 + i * scaleX;
+        let y = 350 - historyTemp[i] * scaleY;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = "black";
+    ctx.fillText("Zeit →", 700, 380);
+    ctx.fillText("Temperatur", 10, 60);
+
+    ctx.fillStyle = "red";
+    ctx.fillText("Sollwert (200°C)", 600, 80);
+
+    ctx.fillStyle = "blue";
+    ctx.fillText("Istwert", 600, 100);
+}
+
+function loop() {
+    updatePhysics();
+    drawChart();
+    document.getElementById("status").innerText = "Status: " + getStatus();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
