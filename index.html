@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Pizza Regelungssimulation</title>
+<title>Pizza-Regelung 15 min Simulation</title>
 
 <style>
 body {
@@ -11,117 +11,134 @@ body {
     background: #f5f5f5;
 }
 
-.row {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 20px;
-    margin-top: 20px;
-}
-
-.box {
-    border: 2px solid black;
-    padding: 15px;
-    background: white;
-    min-width: 120px;
-}
-
-.arrow {
-    font-size: 30px;
-}
-
 canvas {
     background: white;
     border: 1px solid #ccc;
-    margin-top: 20px;
-}
-
-#score {
-    font-size: 28px;
-    font-weight: bold;
+    margin-top: 15px;
 }
 
 button {
     padding: 10px 20px;
     font-size: 16px;
+    margin: 10px;
+}
+
+#status {
+    font-size: 20px;
     margin-top: 10px;
+}
+
+#result {
+    font-size: 30px;
+    font-weight: bold;
+    margin-top: 20px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🍕 Pizza-Regelungssimulation</h2>
+<h2>🍕 Pizza-Regelungssimulation (15 min)</h2>
 
-<!-- BLOCKDIAGRAMM -->
-<div class="row">
-    <div class="box">
-        🔥<br>
-        Heizelement<br><br>
-        <button onclick="toggle()">Ofen AN/AUS</button>
-    </div>
+<button onclick="toggle()">Ofen AN/AUS</button>
 
-    <div class="arrow">→</div>
+<div id="status">Status: läuft...</div>
 
-    <div class="box">
-        Backofen<br><br>
-        <div id="tempBox">160 °C</div>
-    </div>
+<div id="result"></div>
 
-    <div class="arrow">→</div>
-
-    <div class="box">
-        Temperatur<br><br>
-        <div id="score">SCORE 000</div>
-    </div>
-</div>
-
-<!-- CHART -->
 <canvas id="chart" width="800" height="350"></canvas>
 
 <script>
+
 let oven = false;
 
 let temp = 20;
-const target = 200;
 const ambient = 20;
+
+// 🎯 Sollbereich
+const target = 190;
+const band = 3;
+
+// ⏱ Simulation
+let time = 0;
+const maxTime = 15 * 60; // 15 min in "Sekunden"
 
 let dataTemp = [];
 let dataTarget = [];
 
+let finished = false;
+
 function toggle(){
-    oven = !oven;
+    if(!finished) oven = !oven;
 }
 
-function score(temp){
-    let err = Math.abs(target - temp);
+// 🍕 Bewertung
+function evaluate(){
+    let insideBandTime = 0;
+    let below = 0;
+    let above = 0;
 
-    if(err < 10) return 100;
-    if(err < 30) return 70;
-    if(err < 60) return 40;
-    return 10;
+    for(let i=0;i<dataTemp.length;i++){
+        if(dataTemp[i] >= target-band && dataTemp[i] <= target+band){
+            insideBandTime++;
+        }
+        if(dataTemp[i] < target-band){
+            below++;
+        }
+        if(dataTemp[i] > target+band){
+            above++;
+        }
+    }
+
+    let ratioInside = insideBandTime / dataTemp.length;
+
+    // Regeln nach deiner Vorgabe:
+    if(ratioInside > 0.6 && above < below){
+        return "TOP";
+    }
+    if(above > below){
+        return "VERBRANNT";
+    }
+    return "TIEFGEFROREN";
 }
 
+// 🧠 Physik
 function update(){
-    // 🔥 Regelstrecke so eingestellt, dass Gleichgewicht > Sollwert
-    let power = oven ? 8.0 : 0.0;
+    if(finished) return;
+
+    let power = oven ? 7.5 : 0.0;
     let loss = 0.02 * (temp - ambient);
 
     temp += power - loss;
 
     if(temp < ambient) temp = ambient;
-    if(temp > 320) temp = 320;
+    if(temp > 350) temp = 350;
 
     dataTemp.push(temp);
     dataTarget.push(target);
 
-    if(dataTemp.length > 200){
-        dataTemp.shift();
-        dataTarget.shift();
+    time++;
+
+    if(time >= maxTime){
+        finished = true;
+        showResult();
+    }
+}
+
+function showResult(){
+    let result = evaluate();
+
+    let img = "";
+
+    if(result === "TOP"){
+        img = "🍕 TOP PIZZA";
+    } else if(result === "VERBRANNT"){
+        img = "🔥 VERBRANNT";
+    } else {
+        img = "🧊 TIEFGEFROREN";
     }
 
-    document.getElementById("tempBox").innerText = temp.toFixed(1) + " °C";
-    document.getElementById("score").innerText = "SCORE " + score(temp);
+    document.getElementById("result").innerText = img;
 }
 
 function draw(){
@@ -138,10 +155,10 @@ function draw(){
     ctx.lineTo(50,20);
     ctx.stroke();
 
-    let sx = 3;
+    let sx = 2.5;
     let sy = 1.2;
 
-    // Sollwert (rot)
+    // Soll
     ctx.beginPath();
     ctx.strokeStyle = "red";
     for(let i=0;i<dataTarget.length;i++){
@@ -152,7 +169,7 @@ function draw(){
     }
     ctx.stroke();
 
-    // Istwert (blau)
+    // Ist
     ctx.beginPath();
     ctx.strokeStyle = "blue";
     for(let i=0;i<dataTemp.length;i++){
@@ -168,13 +185,19 @@ function draw(){
     ctx.fillText("Temperatur",10,30);
 }
 
+// ⏱ Loop (1 Iteration = 1 Sekunde simuliert)
 function loop(){
     update();
     draw();
-    requestAnimationFrame(loop);
+
+    document.getElementById("status").innerText =
+        "Zeit: " + Math.floor(time/60) + " min";
+
+    setTimeout(loop, 50); // schnellere Simulation
 }
 
 loop();
+
 </script>
 
 </body>
