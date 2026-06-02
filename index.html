@@ -2,202 +2,537 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Pizza-Regelung 15 min Simulation</title>
+<title>Pizza Regelungssimulation</title>
 
 <style>
 body {
-    font-family: Arial;
+    font-family: Arial, sans-serif;
     text-align: center;
-    background: #f5f5f5;
+    background: #f2f2f2;
+    margin: 0;
+    padding: 0;
 }
 
+/* =========================
+   TITEL
+========================= */
+h2 {
+    margin-top: 20px;
+    font-weight: 600;
+}
+
+/* =========================
+   BLOCKDIAGRAMM
+========================= */
+.row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 25px;
+    margin-top: 25px;
+}
+
+.box {
+    border: 2px solid #222;
+    padding: 15px;
+    background: white;
+    min-width: 140px;
+    border-radius: 8px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Pfeile */
+.arrow {
+    font-size: 28px;
+    color: #444;
+}
+
+/* =========================
+   TEMPERATUR / SCORE
+========================= */
+#tempBox {
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+#score {
+    font-size: 26px;
+    font-weight: bold;
+    color: #222;
+}
+
+/* =========================
+   CANVAS (Diagramm)
+========================= */
 canvas {
     background: white;
     border: 1px solid #ccc;
-    margin-top: 15px;
+    margin-top: 25px;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.08);
 }
 
-button {
-    padding: 10px 20px;
-    font-size: 16px;
-    margin: 10px;
-}
-
-#status {
-    font-size: 20px;
+/* =========================
+   SWITCH (ON/OFF)
+========================= */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
     margin-top: 10px;
 }
 
-#result {
-    font-size: 30px;
-    font-weight: bold;
-    margin-top: 20px;
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #bbb;
+    transition: 0.3s;
+    border-radius: 34px;
+}
+
+/* Knopf */
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #4CAF50;
+}
+
+/* Knopf Bewegung */
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+
+button {
+    padding: 8px 14px;
+    font-size: 14px;
+    margin-top: 10px;
+    border: none;
+    background: #333;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #555;
+}
+#resultBox{
+    position: absolute;
+
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    background: white;
+    border: 2px solid black;
+    border-radius: 10px;
+
+    padding: 30px 50px;
+
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+
+    z-index: 1000;
+}
+#resultBox button{
+    margin-top: 15px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+
+    border: none;
+    border-radius: 5px;
+
+    background: #4CAF50;
+    color: white;
+}
+
+#resultBox button:hover{
+    background: #45a049;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🍕 Pizza-Regelungssimulation (15 min)</h2>
+<h2>Pizza-Regelungssimulation</h2>
 
-<button onclick="toggle()">Ofen AN/AUS</button>
+<!-- BLOCKDIAGRAMM -->
+<div class="row">
+    <div class="box">
+        <br>
+        Heizelement<br><br>
+        <label class="switch">
+    <input type="checkbox" onchange="toggle(this)">
+    <span class="slider"></span>
+    </label>
+    </div>
 
-<div id="status">Status: läuft...</div>
+    <div class="arrow">→</div>
 
-<div id="result"></div>
+    <div class="box">
+        Backofen<br><br>
+        <div id="tempBox">160 °C</div>
+    </div>
 
+    <div class="arrow">→</div>
+
+    <div class="box">
+        Temperatur<br><br>
+        <div id="score">SCORE 000</div>
+    </div>
+</div>
+
+<!-- CHART -->
 <canvas id="chart" width="800" height="350"></canvas>
 
 <script>
-
+const SIM_TIME = 20 * 60; // 15 Minuten in Sekunden
+const dt = 1;           // dein Zeitschritt
+const MAX_POINTS = SIM_TIME / dt;
+let simTime = 0;
+const MAX_TIME = 20 * 60; // 20 Minuten in Sekunden
 let oven = false;
-
+let running = false;
 let temp = 20;
+const target = 200;
 const ambient = 20;
-
-// Sollbereich
-const target = 190;
-const band = 3;
-
-// Simulation
-let time = 0;
-const maxTime = 15 * 60; // 15 min in "Sekunden"
-
+const x0 = 50;
+const x1 = 750;
+const y0 = 300;
+const y1 = 20;
+const maxTime = 20 * 60; // Sekunden
+const maxTemp = 300;
+const maxTimeMin = 20;
 let dataTemp = [];
 let dataTarget = [];
+let xScale = (x1 - x0) / maxTime;
+let yScale = (y0 - y1) / maxTemp;
+let pizzaScore = 0;
+let scoreSum = 0;
+let perfectTime = 0;
+let totalTempSum = 0;
+let totalSteps = 0;
+let burned = false;
+let avgStartTime = 5 * 60; // 5 Minuten
 
-let finished = false;
+function toggle(el){
+    oven = el.checked;
 
-function toggle(){
-    if(!finished) oven = !oven;
+    if(oven){
+        running = true;
+    }
 }
 
-// Bewertung
-function evaluate(){
-    let insideBandTime = 0;
-    let below = 0;
-    let above = 0;
+function score(temp){
 
-    for(let i=0;i<dataTemp.length;i++){
-        if(dataTemp[i] >= target-band && dataTemp[i] <= target+band){
-            insideBandTime++;
-        }
-        if(dataTemp[i] < target-band){
-            below++;
-        }
-        if(dataTemp[i] > target+band){
-            above++;
-        }
-    }
+    const error = Math.abs(target - temp);
 
-    let ratioInside = insideBandTime / dataTemp.length;
+    const maxError = 120; // ab hier = 0%
 
-    // Regeln nach deiner Vorgabe:
-    if(ratioInside > 0.6 && above < below){
-        return "TOP";
-    }
-    if(above > below){
-        return "VERBRANNT";
-    }
-    return "TIEFGEFROREN";
+    let s = 1 - (error / maxError);
+
+    // begrenzen auf 0–1
+    s = Math.max(0, Math.min(1, s));
+
+    return s * 100;
 }
 
-// Physik
+let ovenPower = 0;   // interne Energie (NEU!)
+
 function update(){
-    if(finished) return;
 
-    let power = oven ? 7.5 : 0.0;
-    let loss = 0.02 * (temp - ambient);
+    let P = oven ? 13000 : 0;
+    let k = 40;
+    let C = 12000;
 
-    temp += power - loss;
+    // 1. schnelle Dynamik (Heizer -> Ofen)
+    let dT = (P - k * (temp - ambient)) / C;
 
-    if(temp < ambient) temp = ambient;
-    if(temp > 350) temp = 350;
+    ovenPower += dT * dt;
+
+    // 2. thermische Trägheit (GLÄTTUNG)
+    let tau = 80; // Sekunden → bestimmt "Nachglühen"
+
+    let dTemp = (ovenPower - temp) / tau;
+
+    temp += dTemp * dt;
+
+    // Grenzen
+    temp = Math.max(ambient, Math.min(320, temp));
 
     dataTemp.push(temp);
     dataTarget.push(target);
 
-    time++;
-
-    if(time >= maxTime){
-        finished = true;
-        showResult();
+   if(dataTemp.length > MAX_POINTS){
+    dataTemp.shift();
+    dataTarget.shift();
     }
+
+
+    document.getElementById("tempBox").innerText =
+        temp.toFixed(1) + " °C";
+    let error = Math.abs(target - temp);
+
+    // je kleiner der Fehler, desto mehr Punkte pro Zeitschritt
+    let stepScore = Math.max(0, 10 - error / 10);
+
+    scoreSum += stepScore * dt;
+    document.getElementById("score").innerText =
+    "SCORE " + scoreSum.toFixed(0);
+    // Pizza-Bewertung
+
+    // Durchschnitt berechnen
+    if(simTime >= avgStartTime){
+
+    totalTempSum += temp;
+    totalSteps++;
+
+    }   
+
+    // Sicherheitsregel: sofort verbrannt
+    if(temp > 300){
+        burned = true;
+    }
+
+    // 🍕 Perfekt-Zeit zählen (nur enger Bereich)
+    if(temp >= 197 && temp <= 203){
+        perfectTime += dt;
+    }
+    simTime += dt;
+}
+function restartSimulation(){
+
+    // Zeit + Zustand
+    simTime = 0;
+    pizzaScore = 0;
+    scoreSum = 0;
+    perfectTime = 0;
+    totalTempSum = 0;
+    totalSteps = 0;
+    burned = false;
+    temp = ambient;
+    ovenPower = 0;
+
+    oven = false;
+    running = false;
+
+    // Daten löschen
+    dataTemp = [];
+    dataTarget = [];
+
+    // UI reset
+    document.getElementById("tempBox").innerText =
+        temp.toFixed(1) + " °C";
+
+    document.getElementById("score").innerText =
+        "SCORE 000";
+
+    // Switch zurücksetzen
+    let sw = document.querySelector(".switch input");
+    if(sw) sw.checked = false;
+
+    // Ergebnisbox entfernen
+    let box = document.getElementById("resultBox");
+    if(box) box.remove();
 }
 
 function showResult(){
-    let result = evaluate();
 
-    let img = "";
+    let text;
+    let avgTemp = totalSteps > 0 ? totalTempSum / totalSteps : temp;
 
-    if(result === "TOP"){
-        img = "🍕 TOP PIZZA";
-    } else if(result === "VERBRANNT"){
-        img = "🔥 VERBRANNT";
-    } else {
-        img = "🧊 TIEFGEFROREN";
+    if(burned || avgTemp > 203){
+        text = "🔥 Oh nein, die Pizza ist verbrannt!";
+    }
+    else if(perfectTime >= 10 * 60){
+        text = "🍕 Die Pizza ist perfekt gebacken!";
+    }
+    else if(avgTemp < 200){
+        text = "🥶 Die Pizza ist noch tiefgefroren.";
+    }
+    else{
+        text = "⚠️ Die Pizza ist nicht perfekt gebacken.";
     }
 
-    document.getElementById("result").innerText = img;
+    document.body.insertAdjacentHTML(
+        "beforeend",
+        `
+        <div id="resultBox">
+            <h2>${text}</h2>
+            <button onclick="restartSimulation()">
+                Neu starten
+            </button>
+        </div>
+        `
+    );
 }
-
 function draw(){
     const c = document.getElementById("chart");
     const ctx = c.getContext("2d");
 
     ctx.clearRect(0,0,c.width,c.height);
 
-    // Achsen
-    ctx.beginPath();
-    ctx.moveTo(50,300);
-    ctx.lineTo(750,300);
-    ctx.moveTo(50,300);
-    ctx.lineTo(50,20);
-    ctx.stroke();
+    // =========================
+    // SKALEN
+    // =========================
+    const x0 = 50;
+    const x1 = 750;
+    const y0 = 300;
+    const y1 = 20;
 
-    let sx = 2.5;
-    let sy = 1.2;
+    const maxTime = 20 * 60;   // Sekunden
+    const maxTemp = 300;
 
-    // Soll
-    ctx.beginPath();
+    let xScale = (x1 - x0) / maxTime;
+    let yScale = (y0 - y1) / maxTemp;
+
+    // =========================
+    // GITTER (GRAU)
+    // =========================
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
+
+    // Zeitgitter alle 5 min
+    for(let t = 0; t <= maxTime; t += 5*60){
+        let x = x0 + t * xScale;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+        ctx.stroke();
+    }
+
+    // Temperaturgitter alle 50°C
+    for(let T = 0; T <= maxTemp; T += 50){
+        let y = y0 - T * yScale;
+
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+        ctx.stroke();
+    }
+
+    // =========================
+    // SOLLWERT (ROT, LINIE)
+    // =========================
     ctx.strokeStyle = "red";
-    for(let i=0;i<dataTarget.length;i++){
-        let x = 50 + i*sx;
-        let y = 300 - dataTarget[i]*sy;
-        if(i===0) ctx.moveTo(x,y);
-        else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
+    ctx.lineWidth = 2;
 
-    // Ist
+    let yTarget = y0 - target * yScale;
+
     ctx.beginPath();
-    ctx.strokeStyle = "blue";
-    for(let i=0;i<dataTemp.length;i++){
-        let x = 50 + i*sx;
-        let y = 300 - dataTemp[i]*sy;
-        if(i===0) ctx.moveTo(x,y);
-        else ctx.lineTo(x,y);
-    }
+    ctx.moveTo(x0, yTarget);
+    ctx.lineTo(x1, yTarget);
     ctx.stroke();
 
-    ctx.fillStyle="black";
-    ctx.fillText("Zeit in Min",700,330);
-    ctx.fillText("Temperatur in Grad",10,30);
+    // =========================
+    // ISTWERT (BLAU)
+    // =========================
+    ctx.strokeStyle = "blue";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    for(let i = 0; i < dataTemp.length; i++){
+
+        let t = i * dt;
+        let x = x0 + t * xScale;
+        let y = y0 - dataTemp[i] * yScale;
+
+        if(i === 0) ctx.moveTo(x,y);
+        else ctx.lineTo(x,y);
+    }
+
+    ctx.stroke();
+
+    // =========================
+    // ACHSEN (SCHWARZ + PFEILE)
+    // =========================
+    ctx.strokeStyle = "black";
+    ctx.fillStyle = "black";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    // X-Achse
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y0);
+
+    // Pfeil X
+    ctx.lineTo(x1 - 10, y0 - 5);
+    ctx.moveTo(x1, y0);
+    ctx.lineTo(x1 - 10, y0 + 5);
+
+    // Y-Achse
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0, y1);
+
+    // Pfeil Y
+    ctx.lineTo(x0 - 5, y1 + 10);
+    ctx.moveTo(x0, y1);
+    ctx.lineTo(x0 + 5, y1 + 10);
+
+    ctx.stroke();
+
+    // =========================
+    // LABELS
+    // =========================
+    ctx.fillStyle = "black";
+    ctx.font = "12px Arial";
+
+    for(let t = 0; t <= maxTime; t += 5*60){
+
+        let x = x0 + t * xScale;
+
+        let min = Math.round(t / 60);
+
+        ctx.fillText(min + " min", x - 15, y0 + 15);
+    }
+    for(let T = 0; T <= maxTemp; T += 100){
+
+        let y = y0 - T * yScale;
+
+        ctx.fillText(T + "°C", 5, y + 4);
+    }
+    ctx.fillText("Zeit ", 700, 330);
+    ctx.fillText("Temperatur", 10, 10);
 }
 
-// Loop (1 Iteration = 1 Sekunde simuliert)
 function loop(){
-    update();
+
+    if(running && simTime < MAX_TIME){
+        update();
+    }
+
+    if(simTime >= MAX_TIME && running){
+        running = false;
+        showResult();
+    }
+
     draw();
-
-    document.getElementById("status").innerText =
-        "Zeit: " + Math.floor(time/60) + " min";
-
-    setTimeout(loop, 50); // schnellere Simulation
+    requestAnimationFrame(loop);
 }
 
 loop();
-
 </script>
 
 </body>
