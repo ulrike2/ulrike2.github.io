@@ -56,15 +56,11 @@ function toggleOven() {
 }
 
 function updatePhysics() {
-    // einfache thermische Dynamik
-    let heating = ovenOn ? 2.5 : -1.5;
+    const power = ovenOn ? 7.5 : 0.0;   // bewusst stärker dimensioniert
+    const loss = 0.02 * (temp - ambient); // relativ schwacher Verlust
 
-    // Abkühlung zur Umgebung
-    let cooling = (ambient - temp) * 0.02;
+    temp += power - loss;
 
-    temp += heating + cooling;
-
-    // Grenzen
     if (temp < ambient) temp = ambient;
     if (temp > 300) temp = 300;
 
