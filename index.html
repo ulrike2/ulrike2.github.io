@@ -55,11 +55,11 @@ let oven = false;
 let temp = 20;
 const ambient = 20;
 
-// 🎯 Sollbereich
+// Sollbereich
 const target = 190;
 const band = 3;
 
-// ⏱ Simulation
+// Simulation
 let time = 0;
 const maxTime = 15 * 60; // 15 min in "Sekunden"
 
@@ -72,7 +72,7 @@ function toggle(){
     if(!finished) oven = !oven;
 }
 
-// 🍕 Bewertung
+// Bewertung
 function evaluate(){
     let insideBandTime = 0;
     let below = 0;
@@ -102,7 +102,7 @@ function evaluate(){
     return "TIEFGEFROREN";
 }
 
-// 🧠 Physik
+// Physik
 function update(){
     if(finished) return;
 
@@ -181,11 +181,11 @@ function draw(){
     ctx.stroke();
 
     ctx.fillStyle="black";
-    ctx.fillText("Zeit →",700,330);
-    ctx.fillText("Temperatur",10,30);
+    ctx.fillText("Zeit in Min",700,330);
+    ctx.fillText("Temperatur in Grad",10,30);
 }
 
-// ⏱ Loop (1 Iteration = 1 Sekunde simuliert)
+// Loop (1 Iteration = 1 Sekunde simuliert)
 function loop(){
     update();
     draw();
