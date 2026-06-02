@@ -309,12 +309,12 @@ function update(){
     }   
 
     // Sicherheitsregel: sofort verbrannt
-    if(temp > 300){
+    if(temp > 270){
         burned = true;
     }
 
     // 🍕 Perfekt-Zeit zählen (nur enger Bereich)
-    if(temp >= 197 && temp <= 203){
+    if(temp >= 196 && temp <= 204){
         perfectTime += dt;
     }
     simTime += dt;
@@ -360,17 +360,17 @@ function showResult(){
     let text;
     let avgTemp = totalSteps > 0 ? totalTempSum / totalSteps : temp;
 
-    if(burned || avgTemp > 203){
+    if(burned || avgTemp > 210){
         text = "🔥 Oh nein, die Pizza ist verbrannt!";
     }
     else if(perfectTime >= 10 * 60){
-        text = "🍕 Die Pizza ist perfekt gebacken!";
+        text = "Die Pizza ist perfekt gebacken!";
     }
-    else if(avgTemp < 200){
+    else if(avgTemp < 190){
         text = "🥶 Die Pizza ist noch tiefgefroren.";
     }
     else{
-        text = "⚠️ Die Pizza ist nicht perfekt gebacken.";
+        text = "Die Pizza ist so naja gebacken.";
     }
 
     document.body.insertAdjacentHTML(
