@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Pizza Regelungssimulation</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f2f2f2;
+    margin: 0;
+    padding: 0;
+}
+
+/* =========================
+   TITEL
+========================= */
+h2 {
+    margin-top: 20px;
+    font-weight: 600;
+}
+
+/* =========================
+   BLOCKDIAGRAMM
+========================= */
+.row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 25px;
+    margin-top: 25px;
+}
+
+.box {
+    border: 2px solid #222;
+    padding: 15px;
+    background: white;
+    min-width: 140px;
+    border-radius: 8px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Pfeile */
+.arrow {
+    font-size: 28px;
+    color: #444;
+}
+
+/* =========================
+   TEMPERATUR / SCORE
+========================= */
+#tempBox {
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+#score {
+    font-size: 26px;
+    font-weight: bold;
+    color: #222;
+}
+
+/* =========================
+   CANVAS (Diagramm)
+========================= */
+canvas {
+    background: white;
+    border: 1px solid #ccc;
+    margin-top: 25px;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.08);
+}
+
+/* =========================
+   SWITCH (ON/OFF)
+========================= */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+    margin-top: 10px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #bbb;
+    transition: 0.3s;
+    border-radius: 34px;
+}
+
+/* Knopf */
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #4CAF50;
+}
+
+/* Knopf Bewegung */
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+
+button {
+    padding: 8px 14px;
+    font-size: 14px;
+    margin-top: 10px;
+    border: none;
+    background: #333;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #555;
+}
+#resultBox{
+    position: absolute;
+
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    background: white;
+    border: 2px solid black;
+    border-radius: 10px;
+
+    padding: 30px 50px;
+
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+
+    z-index: 1000;
+}
+#resultBox button{
+    margin-top: 15px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+
+    border: none;
+    border-radius: 5px;
+
+    background: #4CAF50;
+    color: white;
+}
+
+#resultBox button:hover{
+    background: #45a049;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Pizzasimulation</h2>
+<body>Backe die Pizza in dem du den Ofen ein- und ausschaltest. Je näher du an der Zieltemperatur von 200 °C bleibst, desto mehr Punkte bekommst du. Aber Vorsicht: Wenn die Pizza zu lange über 210 °C bleibt, ist sie verbrannt!</body>
+<!-- BLOCKDIAGRAMM -->
+ <div style="margin-top:15px;">
+    <button onclick="startAuto()">
+        Automatischen Zweipunktregler starten
+    </button>
+</div>
+<div style="margin-top:10px;">
+    <label for="hysteresisSlider" style="font-size:15px;">
+        Hysterese: <strong><span id="hysteresisVal">2</span> °C</strong>
+        &nbsp;(Einschalt &lt; <span id="hysteresisLow">198</span> °C,
+         Ausschalt &gt; <span id="hysteresisHigh">202</span> °C)
+    </label><br>
+    <input type="range" id="hysteresisSlider" min="0" max="5" step="0.5" value="2"
+           oninput="updateHysteresis(this.value)" style="width:220px; margin-top:6px;">
+</div>
+<div class="row">
+    <div class="box">
+        <br>
+        Heizelement<br><br>
+        <label class="switch">
+    <input type="checkbox" onchange="toggle(this)">
+    <span class="slider"></span>
+    </label>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="box">
+        Backofen<br><br>
+        <div id="tempBox">160 °C</div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="box">
+        Temperatur<br><br>
+        <div id="score">SCORE 000</div>
+    </div>
+</div>
+
+<!-- CHART -->
+<canvas id="chart" width="800" height="350"></canvas>
+<div style="margin-top:10px;">
+    <button id="freqBtn" onclick="toggleFreqChart()">Schaltverlauf anzeigen</button>
+</div>
+<canvas id="chartFreq" width="800" height="120" style="display:none; margin-top:5px;"></canvas>
+
+<script>
+const SIM_TIME = 20 * 60; // 15 Minuten in Sekunden
+const dt = 1;           // dein Zeitschritt
+const MAX_POINTS = SIM_TIME / dt;
+let simTime = 0;
+const MAX_TIME = 20 * 60; // 20 Minuten in Sekunden
+let oven = false;
+let running = false;
+let temp = 20;
+const target = 200;
+const ambient = 20;
+const x0 = 50;
+const x1 = 750;
+const y0 = 300;
+const y1 = 20;
+const maxTime = 20 * 60; // Sekunden
+const maxTemp = 300;
+const maxTimeMin = 20;
+let dataTemp = [];
+let dataTarget = [];
+let xScale = (x1 - x0) / maxTime;
+let yScale = (y0 - y1) / maxTemp;
+let pizzaScore = 0;
+let scoreSum = 0;
+let perfectTime = 0;
+let totalTempSum = 0;
+let totalSteps = 0;
+let burned = false;
+let avgStartTime = 5 * 60; // 5 Minuten
+let autoMode = true; // Automatikmodus
+let hysteresis = 2;  // Hysterese in °C
+let dataOven = []; // Ofenzustand über Zeit (0 = AUS, 1 = EIN)
+function toggle(el){
+    oven = el.checked;
+
+    if(oven){
+        running = true;
+    }
+}
+
+function score(temp){
+
+    const error = Math.abs(target - temp);
+
+    const maxError = 120; // ab hier = 0%
+
+    let s = 1 - (error / maxError);
+
+    // begrenzen auf 0–1
+    s = Math.max(0, Math.min(1, s));
+
+    return s * 100;
+}
+
+let ovenPower = 0;   // interne Energie (NEU!)
+
+function startAuto(){
+    restartSimulation();
+    autoMode = true;
+    running = true;
+
+    const sw = document.querySelector(".switch input");
+    sw.disabled = true;
+}
+
+function updateHysteresis(val){
+    hysteresis = parseFloat(val);
+    document.getElementById("hysteresisVal").innerText = val;
+    document.getElementById("hysteresisLow").innerText = (target - hysteresis).toFixed(1);
+    document.getElementById("hysteresisHigh").innerText = (target + hysteresis).toFixed(1);
+}
+
+function update(){
+    // Zweipunktregler
+
+    if(autoMode){
+
+        if(temp < target - hysteresis){
+            oven = true;
+        }
+        else if(temp > target + hysteresis){
+            oven = false;
+        }
+
+        const sw = document.querySelector(".switch input");
+
+        sw.checked = oven;
+    }
+    let P = oven ? 13000 : 0;
+    let k = 40;
+    let C = 12000;
+
+    // 1. schnelle Dynamik (Heizer -> Ofen)
+    let dT = (P - k * (temp - ambient)) / C;
+
+    ovenPower += dT * dt;
+
+    // 2. thermische Trägheit (GLÄTTUNG)
+    let tau = 80; // Sekunden → bestimmt "Nachglühen"
+
+    let dTemp = (ovenPower - temp) / tau;
+
+    temp += dTemp * dt;
+
+    // Grenzen
+    temp = Math.max(ambient, Math.min(320, temp));
+
+    dataTemp.push(temp);
+    dataTarget.push(target);
+
+    if(dataTemp.length > MAX_POINTS){
+    dataTemp.shift();
+    dataTarget.shift();
+    }
+    // Zweipunktregler
+    if(autoMode){
+
+        if(temp < target - hysteresis){
+            oven = true;
+        }
+        else if(temp > target + hysteresis){
+            oven = false;
+        }
+
+        // Schalterposition aktualisieren
+        const sw = document.querySelector(".switch input");
+        sw.checked = oven;
+    }
+    const sw = document.querySelector(".switch input");
+
+    if(autoMode){
+        sw.disabled = true;
+    }
+    else{
+        sw.disabled = false;
+    }
+    document.getElementById("tempBox").innerText =
+        temp.toFixed(1) + " °C";
+    let error = Math.abs(target - temp);
+
+    // je kleiner der Fehler, desto mehr Punkte pro Zeitschritt
+    let stepScore = Math.max(0, 10 - error / 10);
+
+    scoreSum += stepScore * dt;
+    document.getElementById("score").innerText =
+    "SCORE " + scoreSum.toFixed(0);
+    // Pizza-Bewertung
+
+    // Durchschnitt berechnen
+    if(simTime >= avgStartTime){
+
+    totalTempSum += temp;
+    totalSteps++;
+
+    }   
+
+    // Sicherheitsregel: sofort verbrannt
+    if(temp > 270){
+        burned = true;
+    }
+
+    // 🍕 Perfekt-Zeit zählen (nur enger Bereich)
+    if(temp >= 196 && temp <= 204){
+        perfectTime += dt;
+    }
+    dataOven.push(oven ? 1 : 0);
+    if (dataOven.length > MAX_POINTS) dataOven.shift();
+
+    simTime += dt;
+}
+function restartSimulation(){
+
+    // Zeit + Zustand
+    simTime = 0;
+    pizzaScore = 0;
+    scoreSum = 0;
+    perfectTime = 0;
+    totalTempSum = 0;
+    totalSteps = 0;
+    burned = false;
+    temp = ambient;
+    ovenPower = 0;
+
+    oven = false;
+    running = false;
+    autoMode = false;
+    dataOven = [];
+
+    let sw = document.querySelector(".switch input");
+    sw.disabled = false;
+    sw.checked = false;
+    // Daten löschen
+    dataTemp = [];
+    dataTarget = [];
+
+    // UI reset
+    document.getElementById("tempBox").innerText =
+        temp.toFixed(1) + " °C";
+
+    document.getElementById("score").innerText =
+        "SCORE 000";
+
+    // Switch zurücksetzen
+    if(sw) sw.checked = false;
+
+    // Ergebnisbox entfernen
+    let box = document.getElementById("resultBox");
+    if(box) box.remove();
+}
+
+function draw(){
+    const c = document.getElementById("chart");
+    const ctx = c.getContext("2d");
+
+    ctx.clearRect(0,0,c.width,c.height);
+
+    // =========================
+    // SKALEN
+    // =========================
+    const x0 = 50;
+    const x1 = 750;
+    const y0 = 300;
+    const y1 = 20;
+
+    const maxTime = 20 * 60;   // Sekunden
+    const maxTemp = 300;
+
+    let xScale = (x1 - x0) / maxTime;
+    let yScale = (y0 - y1) / maxTemp;
+
+    // =========================
+    // GITTER (GRAU)
+    // =========================
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
+
+    // Zeitgitter alle 5 min
+    for(let t = 0; t <= maxTime; t += 5*60){
+        let x = x0 + t * xScale;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+        ctx.stroke();
+    }
+
+    // Temperaturgitter alle 50°C
+    for(let T = 0; T <= maxTemp; T += 50){
+        let y = y0 - T * yScale;
+
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+        ctx.stroke();
+    }
+
+    // =========================
+    // SOLLWERT (ROT, LINIE)
+    // =========================
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+
+    let yTarget = y0 - target * yScale;
+
+    ctx.beginPath();
+    ctx.moveTo(x0, yTarget);
+    ctx.lineTo(x1, yTarget);
+    ctx.stroke();
+
+    // =========================
+    // ISTWERT (BLAU)
+    // =========================
+    ctx.strokeStyle = "blue";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    for(let i = 0; i < dataTemp.length; i++){
+
+        let t = i * dt;
+        let x = x0 + t * xScale;
+        let y = y0 - dataTemp[i] * yScale;
+
+        if(i === 0) ctx.moveTo(x,y);
+        else ctx.lineTo(x,y);
+    }
+
+    ctx.stroke();
+
+    // =========================
+    // ACHSEN (SCHWARZ + PFEILE)
+    // =========================
+    ctx.strokeStyle = "black";
+    ctx.fillStyle = "black";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    // X-Achse
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y0);
+
+    // Pfeil X
+    ctx.lineTo(x1 - 10, y0 - 5);
+    ctx.moveTo(x1, y0);
+    ctx.lineTo(x1 - 10, y0 + 5);
+
+    // Y-Achse
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0, y1);
+
+    // Pfeil Y
+    ctx.lineTo(x0 - 5, y1 + 10);
+    ctx.moveTo(x0, y1);
+    ctx.lineTo(x0 + 5, y1 + 10);
+
+    ctx.stroke();
+
+    // =========================
+    // LABELS
+    // =========================
+    ctx.fillStyle = "black";
+    ctx.font = "12px Arial";
+
+    for(let t = 0; t <= maxTime; t += 5*60){
+
+        let x = x0 + t * xScale;
+
+        let min = Math.round(t / 60);
+
+        ctx.fillText(min + " min", x - 15, y0 + 15);
+    }
+    for(let T = 0; T <= maxTemp; T += 100){
+
+        let y = y0 - T * yScale;
+
+        ctx.fillText(T + "°C", 5, y + 4);
+    }
+    ctx.fillText("Zeit ", 700, 330);
+    ctx.fillText("Temperatur", 10, 10);
+}
+
+function toggleFreqChart() {
+    const canvas = document.getElementById("chartFreq");
+    const btn = document.getElementById("freqBtn");
+    if (canvas.style.display === "none") {
+        canvas.style.display = "block";
+        btn.textContent = "Schaltverlauf ausblenden";
+    } else {
+        canvas.style.display = "none";
+        btn.textContent = "Schaltverlauf anzeigen";
+    }
+}
+
+function drawFreq() {
+    const c = document.getElementById("chartFreq");
+    if (c.style.display === "none") return;
+
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    const x0 = 50, x1 = 750;
+    const yOff = 85, yOn = 20; // y-Koordinaten für AUS und EIN
+    const maxTime = 20 * 60;
+    const xScale = (x1 - x0) / maxTime;
+
+    // Vertikale Zeitgitter
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
+    for (let t = 0; t <= maxTime; t += 5 * 60) {
+        let x = x0 + t * xScale;
+        ctx.beginPath(); ctx.moveTo(x, yOff); ctx.lineTo(x, yOn); ctx.stroke();
+    }
+
+    // Gefüllte EIN-Bereiche
+    ctx.fillStyle = "rgba(76, 175, 80, 0.35)";
+    for (let i = 0; i < dataOven.length; i++) {
+        if (dataOven[i] === 1) {
+            let x = x0 + i * dt * xScale;
+            ctx.fillRect(x, yOn, Math.max(1, dt * xScale), yOff - yOn);
+        }
+    }
+
+    // Schrittfunktion
+    ctx.strokeStyle = "#2a9d2a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < dataOven.length; i++) {
+        let x = x0 + i * dt * xScale;
+        let y = dataOven[i] === 1 ? yOn : yOff;
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            let yPrev = dataOven[i - 1] === 1 ? yOn : yOff;
+            if (y !== yPrev) { ctx.lineTo(x, yPrev); }
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.stroke();
+
+    // Achsen
+    ctx.strokeStyle = "black";
+    ctx.fillStyle = "black";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, yOff); ctx.lineTo(x1, yOff);
+    ctx.lineTo(x1 - 10, yOff - 5); ctx.moveTo(x1, yOff); ctx.lineTo(x1 - 10, yOff + 5);
+    ctx.moveTo(x0, yOff); ctx.lineTo(x0, yOn - 5);
+    ctx.lineTo(x0 - 5, yOn + 5); ctx.moveTo(x0, yOn - 5); ctx.lineTo(x0 + 5, yOn + 5);
+    ctx.stroke();
+
+    // Labels
+    ctx.font = "12px Arial";
+    for (let t = 0; t <= maxTime; t += 5 * 60) {
+        let x = x0 + t * xScale;
+        ctx.fillText(Math.round(t / 60) + " min", x - 15, yOff + 15);
+    }
+    ctx.fillText("EIN", 8, yOn + 4);
+    ctx.fillText("AUS", 8, yOff - 4);
+    ctx.fillText("Heizelement", 10, 12);
+    ctx.fillText("Zeit", 705, yOff + 15);
+}
+
+function loop(){
+
+    if(running && simTime < MAX_TIME){
+        update();
+    }
+
+    if(simTime >= MAX_TIME && running){
+        running = false;
+    }
+
+    draw();
+    drawFreq();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+<!-- ZURÜCK BUTTON unten links -->
+<div style="position:fixed; bottom:20px; left:20px;">
+    <a href="index.html">
+        <button style="font-size:12px; padding:6px 12px;">← Zurück</button>
+    </a>
+</div>
+
+</body>
+</html>
